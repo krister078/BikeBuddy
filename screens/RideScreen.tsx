@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Button, StyleSheet, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import MapView, { PROVIDER_GOOGLE, Marker, Region } from 'react-native-maps';
+import MapView, { PROVIDER_GOOGLE, Marker, Region, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -12,8 +12,93 @@ const RideScreen: React.FC<RideScreenProps> = ({ navigation }) => {
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [isRideActive, setIsRideActive] = useState(false);
   const [isFetchingInitialLocation, setIsFetchingInitialLocation] = useState(false);
+  const [distance, setDistance] = useState(0);
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState('00:00:00');
+  const [lastLocation, setLastLocation] = useState<Location.LocationObject | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{latitude: number, longitude: number}>>([]);
   const mapRef = useRef<MapView>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calculate distance between two points using Haversine formula
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Filter out unrealistic speed changes
+  const isValidLocationUpdate = (newLocation: Location.LocationObject, lastLocation: Location.LocationObject | null): boolean => {
+    if (!lastLocation) return true;
+
+    const timeDiff = (newLocation.timestamp - lastLocation.timestamp) / 1000; // in seconds
+    const distance = calculateDistance(
+      lastLocation.coords.latitude,
+      lastLocation.coords.longitude,
+      newLocation.coords.latitude,
+      newLocation.coords.longitude
+    );
+    
+    // Calculate speed in km/h
+    const speed = (distance / timeDiff) * 3600;
+    
+    // Filter out updates that would require speeds over 30 km/h
+    // Note: We don't need to check minimum distance here since we're already
+    // filtering that with distanceInterval in watchPositionAsync
+    return speed <= 30;
+  };
+
+  // Calculate calories burned based on distance and time
+  const calculateCalories = (distance: number, timeInHours: number): number => {
+    if (timeInHours === 0) return 0;
+    
+    // Calculate average speed in km/h
+    const speed = distance / timeInHours;
+    
+    // Base MET (Metabolic Equivalent of Task) values for cycling:
+    // - Light effort (10-12 km/h): 4.0 MET
+    // - Moderate effort (12-16 km/h): 6.0 MET
+    // - Vigorous effort (16-20 km/h): 8.0 MET
+    // - Very vigorous effort (>20 km/h): 10.0 MET
+    
+    let metValue = 4.0; // Default to light effort
+    if (speed > 20) metValue = 10.0;
+    else if (speed > 16) metValue = 8.0;
+    else if (speed > 12) metValue = 6.0;
+    
+    // Formula: Calories = MET * time
+    // This gives us a relative calorie burn rate based on intensity
+    const calories = metValue * timeInHours * 60; // Multiply by 60 to get per-minute rate
+    
+    return Math.round(calories);
+  };
+
+  // Format time as HH:MM:SS
+  const formatTime = (date: Date): string => {
+    return date.toISOString().substr(11, 8);
+  };
+
+  useEffect(() => {
+    if (isRideActive && startTime) {
+      timerRef.current = setInterval(() => {
+        const now = new Date();
+        const elapsed = new Date(now.getTime() - startTime.getTime());
+        setElapsedTime(formatTime(elapsed));
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isRideActive, startTime]);
 
   useEffect(() => {
     const requestPermissionsAndGetLocation = async () => {
@@ -58,14 +143,39 @@ const RideScreen: React.FC<RideScreenProps> = ({ navigation }) => {
         console.log('Starting location updates for active ride...');
         locationSubscription.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 2000,
-            distanceInterval: 5,
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 5000, // Increased from 3000 to 5000
+            distanceInterval: 10, // Increased from 5 to 10 meters
           },
           (location) => {
             console.log('Watched location update:', JSON.stringify(location, null, 2));
-            setCurrentLocation(location);
-            centerMapOnLocation(location); 
+            
+            // Only process location if it's valid
+            if (isValidLocationUpdate(location, lastLocation)) {
+              setCurrentLocation(location);
+              centerMapOnLocation(location);
+
+              // Add new coordinate to route
+              setRouteCoordinates(prevCoordinates => [
+                ...prevCoordinates,
+                {
+                  latitude: location.coords.latitude,
+                  longitude: location.coords.longitude
+                }
+              ]);
+
+              // Calculate distance if we have a previous location
+              if (lastLocation) {
+                const newDistance = calculateDistance(
+                  lastLocation.coords.latitude,
+                  lastLocation.coords.longitude,
+                  location.coords.latitude,
+                  location.coords.longitude
+                );
+                setDistance(prevDistance => prevDistance + newDistance);
+              }
+              setLastLocation(location);
+            }
           }
         );
       };
@@ -100,15 +210,28 @@ const RideScreen: React.FC<RideScreenProps> = ({ navigation }) => {
     }
     console.log('Ride started button pressed.');
     setIsRideActive(true);
+    setStartTime(new Date());
+    setDistance(0);
+    setRouteCoordinates([]); // Clear previous route
+    setLastLocation(currentLocation);
   };
 
   const handleStopRide = () => {
     console.log('Ride stopped button pressed.');
     setIsRideActive(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Calculate final calories
+    const timeInHours = startTime ? (new Date().getTime() - startTime.getTime()) / (1000 * 60 * 60) : 0;
+    const calories = calculateCalories(distance, timeInHours);
+
     navigation.navigate('RideOverview', {
-      distance: 0,
-      time: '00:00:00',
-      calories: 0,
+      distance,
+      time: elapsedTime,
+      calories,
+      routeCoordinates, // Pass route coordinates to overview screen
     });
   };
 
@@ -148,12 +271,19 @@ const RideScreen: React.FC<RideScreenProps> = ({ navigation }) => {
             pinColor="blue"
           />
         )}
+        {routeCoordinates.length > 0 && (
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor="#0000FF"
+            strokeWidth={3}
+          />
+        )}
       </MapView>
       
       <View style={styles.statsContainer}>
-        <Text>Distance: 0 km</Text>
-        <Text>Time: 00:00:00</Text>
-        <Text>Calories: 0</Text>
+        <Text>Distance: {distance.toFixed(2)} km</Text>
+        <Text>Time: {elapsedTime}</Text>
+        <Text>Calories: {calculateCalories(distance, startTime ? (new Date().getTime() - startTime.getTime()) / (1000 * 60 * 60) : 0)}</Text>
       </View>
 
       {!isRideActive ? (

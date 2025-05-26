@@ -1,13 +1,25 @@
 import React from 'react';
-import { View, Text, Button, StyleSheet } from 'react-native';
+import { View, Text, Button, StyleSheet, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator'; // Adjust path as needed
+import { useAuth } from '../contexts/AuthContext';
 
 type HomeScreenProps = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
+  const { signOut } = useAuth();
+
   const handleStartRidePress = () => {
     navigation.navigate('Ride');
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      // No need to navigate - AppNavigator will handle it automatically
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   return (
@@ -17,6 +29,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       <View style={styles.buttonContainer}>
         <Button title="Start Ride" onPress={handleStartRidePress} />
       </View>
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <Text style={styles.logoutButtonText}>Log Out</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -45,6 +60,19 @@ const styles = StyleSheet.create({
     width: '80%',
     borderRadius: 25, // Rounded button container
     overflow: 'hidden', // Ensures Button respects borderRadius
+    marginBottom: 20,
+  },
+  logoutButton: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#e74c3c',
+    width: '80%',
+    alignItems: 'center',
+  },
+  logoutButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

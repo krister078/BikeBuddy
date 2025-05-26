@@ -1,4 +1,4 @@
-package com.anonymous.BikeBuddy
+package com.bikebuddy.app
 
 import android.os.Build
 import android.os.Bundle
