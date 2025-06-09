@@ -1,95 +1,107 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-
-const API_URL = 'http://192.168.0.131:3000';
+import { API_URL } from '../config';
+import { signInWithGoogle, signOut, getCurrentUser } from '../services/authService';
 
 interface User {
   id: string;
   email: string;
-  name?: string;
+  name: string | null;
+  photo: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
+  token: string | null;
   loading: boolean;
+  isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  signInWithGoogle: (token: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored user data on app start
-    loadStoredUser();
+    checkUser();
   }, []);
 
-  const loadStoredUser = async () => {
+  const checkUser = async () => {
     try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        setUser(JSON.parse(userData));
+      const storedUser = await AsyncStorage.getItem('user');
+      const storedToken = await AsyncStorage.getItem('token');
+      if (storedUser && storedToken) {
+        setUser(JSON.parse(storedUser));
+        setToken(storedToken);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
       }
     } catch (error) {
-      console.error('Error loading user data:', error);
+      console.error('Error checking user:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const handleSignIn = async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        password,
-      });
-      const userData = response.data;
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
+      setLoading(true);
+      const response = await axios.post(`${API_URL}/auth/login`, { email, password });
+      const { user: newUser, token: newToken } = response.data;
+
+      await AsyncStorage.setItem('token', newToken);
+      await AsyncStorage.setItem('user', JSON.stringify(newUser));
+
+      setUser(newUser as User);
+      setToken(newToken);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     } catch (error) {
-      throw new Error('Invalid email or password');
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.error || 'Failed to sign in');
+      }
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setLoading(true);
+      await signOut();
+      await AsyncStorage.clear();
+      setUser(null);
+      setToken(null);
+      axios.defaults.headers.common['Authorization'] = '';
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signUp = async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/register`, {
-        email,
-        password,
-      });
-      const userData = response.data;
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
+      const response = await axios.post(`${API_URL}/auth/register`, { email, password });
+      const { user: newUser, token: newToken } = response.data;
+      
+      await AsyncStorage.setItem('token', newToken);
+      await AsyncStorage.setItem('user', JSON.stringify(newUser));
+      
+      setUser(newUser as User);
+      setToken(newToken);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
     } catch (error) {
-      throw new Error('Failed to create account');
-    }
-  };
-
-  const signInWithGoogle = async (token: string) => {
-    try {
-      const response = await axios.post(`${API_URL}/auth/google`, {
-        token,
-      });
-      const userData = response.data;
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-    } catch (error) {
-      throw new Error('Failed to sign in with Google');
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      await AsyncStorage.removeItem('user');
-      setUser(null);
-    } catch (error) {
-      console.error('Error signing out:', error);
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.error || 'Failed to sign up');
+      }
+      throw error;
     }
   };
 
@@ -97,11 +109,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user,
+        token,
         loading,
-        signIn,
+        isLoading: loading,
+        signIn: handleSignIn,
         signUp,
-        signOut,
-        signInWithGoogle,
+        signOut: handleSignOut,
       }}
     >
       {children}

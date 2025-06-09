@@ -13,6 +13,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "@types/bcrypt": "^5.0.2",
+    "@types/pg": "^8.15.4",
+    "@types/uuid": "^10.0.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.3",
@@ -20,7 +25,8 @@
     "google-auth-library": "^8.7.0",
     "jsonwebtoken": "^9.0.0",
     "mysql2": "^3.2.0",
-    "@react-native-async-storage/async-storage": "2.1.2"
+    "pg": "^8.16.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",

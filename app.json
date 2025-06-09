@@ -6,37 +6,39 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "scheme": "bikebuddy",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bikebuddy.app"
+      "bundleIdentifier": "com.bikebuddy.app",
+      "jsEngine": "jsc"
     },
     "android": {
-      "googleMapsApiKey": "AIzaSyD2hwISy7aN4ZWWweiegymANMTNjkzjOg4",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.bikebuddy.app"
+      "package": "com.bikebuddy.app",
+      "jsEngine": "jsc"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-web-browser",
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
         "projectId": "your-project-id"
       }
-    }
+    },
+    "jsEngine": "jsc"
   }
 }
